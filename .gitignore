@@ -1,0 +1,48 @@
+# Python 字节码与缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# 构建与打包产物
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# uv / 虚拟环境
+.venv/
+# 注意：uv.lock 必须提交，不要加进 .gitignore
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# 类型检查 / lint 缓存
+.mypy_cache/
+.ruff_cache/
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量与密钥（防止误提交）
+.env
+.env.*
+!.env.example
+
+# 本地日志与临时文件
+*.log
+*.tmp

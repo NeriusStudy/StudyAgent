@@ -1,0 +1,36 @@
+[importlinter]
+root_packages =
+    agentschema
+    agentcore
+    agentllm
+    agentserver
+include_external_packages = True
+
+[importlinter:contract:schema-is-root]
+name = schema must not import any internal package
+type = forbidden
+source_modules =
+    agentschema
+forbidden_modules =
+    agentcore
+    agentllm
+    agentserver
+
+[importlinter:contract:core-no-transport]
+name = core must not import server or fastapi
+type = forbidden
+source_modules =
+    agentcore
+forbidden_modules =
+    agentserver
+    fastapi
+    uvicorn
+
+[importlinter:contract:llm-only-schema]
+name = llm must not import core or server
+type = forbidden
+source_modules =
+    agentllm
+forbidden_modules =
+    agentcore
+    agentserver
