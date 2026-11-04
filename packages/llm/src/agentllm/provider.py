@@ -11,7 +11,8 @@ import json
 from typing import AsyncIterator
 
 # 从我们底层的 agentschema 包中导入 Message 类，用来接收历史对话数据。
-from agentschema import Message
+# 从我们底层的 agentschema 包中导入 LLMConfig 类，用来读取大模型提供商的配置。
+from agentschema import Message, LLMConfig # 导入配置
 
 
 # ==============================================================================
@@ -24,28 +25,16 @@ class OpenAICompatibleProvider:
     都模仿了 OpenAI 的 API 接口格式。只要我们的代码按 OpenAI 的格式发请求，这些模型都能通吃。
     """
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None):
-        """
-        初始化方法。
-        参数带有默认值 None，代表“如果调用时不传参数，我就去环境变量里找；如果环境变量也没有，就用写死的默认值”。
-        这样做的好处是：代码非常灵活，以后部署到服务器上，只要改环境变量，不用改一行代码。
-        """
-        # 1. 设置 API 的基础地址 (Base URL)
-        # os.environ.get("LLM_BASE_URL", "")：从环境变量读取，如果没有则返回空字符串。
-        # .rstrip("/")：去掉 URL 末尾多余的斜杠。比如用户填了 "https://api.deepseek.com/v1/"，自动变成 "https://api.deepseek.com/v1"，防止后面拼接路径时出现双斜杠 "//"。
-        self.base_url = (base_url or os.environ.get("LLM_BASE_URL", "")).rstrip("/")
-        
-        # 2. 设置 API 密钥
-        self.api_key = api_key or os.environ.get("LLM_API_KEY", "")
-        
-        # 3. 设置模型名称
-        # 如果环境变量里没配置，默认使用 "gpt-4o-mini"（仅作为兜底）
-        self.model = model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    def __init__(self, config: LLMConfig):
+        # 不再读环境变量，直接使用传入的配置
+        self.base_url = config.base_url.rstrip("/")
+        self.api_key = config.api_key
+        self.model = config.model
 
-        # 4. 早失败原则 (Fail Fast)
-        # 如果连地址都没有，说明配置严重错误，直接抛出异常（报错），不要等到发请求时才报错。
         if not self.base_url:
-            raise ValueError("LLM_BASE_URL 未设置，请检查你的环境变量！")
+            raise ValueError("LLM_BASE_URL 未设置！")
+        if not self.api_key:
+            raise ValueError("LLM_API_KEY 未设置！")
 
     async def stream_chat(self, messages: list[Message]) -> AsyncIterator[str]:
         """

@@ -14,6 +14,13 @@ from pydantic import BaseModel, Field
 # uuid4: 生成全局唯一的随机 ID（比如类似 "550e8400-e29b-41d4-a716-446655440000" 的字符串）。
 from uuid import uuid4
 
+# AppConfig, LLMConfig, StorageConfig, Settings, load_settings: 我们自己定义的配置类，放在 agentschema/config.py 里。
+from .config import AppConfig, LLMConfig, StorageConfig, Settings, load_settings
+
+# 导出的类列表，方便其他模块直接从 agentschema 导入。
+__all__ = [
+    "AppConfig", "LLMConfig", "StorageConfig", "Settings", "load_settings",
+]
 
 # ==============================================================================
 # 2. 基础枚举：定义“角色”

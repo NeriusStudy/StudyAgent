@@ -1,112 +1,110 @@
-# ==============================================================================
-# 1. 导入所需的工具包
-# ==============================================================================
-# asyncio: Python 标准库的异步 IO 框架。因为我们的网络请求是异步的，需要它来启动事件循环。
+# packages/cli/src/agentcli/main.py
+import typer
 import asyncio
-
-# json: 用来把服务器传回来的 JSON 字符串解析成 Python 的字典。
 import json
-
-# sys: 用来读取终端命令行传入的参数（比如你在终端敲的 "你好"）。
-import sys
-
-# httpx: 现代化的异步 HTTP 客户端，用来向服务端发起网络请求。
 import httpx
+import tomli_w
+from pathlib import Path
+from typing import Optional
+from agentschema import Settings, AppConfig, load_settings
 
+# 创建 Typer 应用实例
+app = typer.Typer(help="Enterprise Agent 命令行工具", no_args_is_help=True)
 
-# ==============================================================================
-# 2. 全局配置
-# ==============================================================================
-# 服务端的接口地址。目前是本地启动的 FastAPI 服务。
-# 以后如果部署到云服务器，只需把这里改成比如 "https://api.yourdomain.com/run" 即可。
-SERVER_URL = "http://127.0.0.1:8000/run"
+# 全局配置路径（默认当前目录下的 config.toml）
+CONFIG_PATH = Path("config.toml")
 
+# =======================
+# 辅助函数：加载与保存配置
+# =======================
+# 辅助函数：直接调用底层加载器
+def get_config() -> Settings:
+    return load_settings(CONFIG_PATH)
 
-# ==============================================================================
-# 3. 核心交互函数：发送请求并接收流式响应
-# ==============================================================================
-async def chat(session_id: str, user_input: str):
-    """
-    这是一个异步函数，负责完成一次完整的对话。
+def save_config(settings: Settings):
+    """将配置写入 TOML 文件"""
+    with open(CONFIG_PATH, "wb") as f:
+        tomli_w.dump(settings.app.model_dump(), f)
+    typer.secho(f"✅ 配置已保存至 {CONFIG_PATH.absolute()}", fg=typer.colors.GREEN)
+
+# =======================
+# 1. 命令组：config (用于修改配置)
+# =======================
+config_app = typer.Typer(help="管理 Agent 配置")
+app.add_typer(config_app, name="config")
+
+@config_app.command("set")
+def set_config(
+    key: str = typer.Argument(..., help="配置键名，例如 llm.api_key, storage.db_url"),
+    value: str = typer.Argument(..., help="配置的值")
+):
+    """修改配置（例如：agentcli config set llm.api_key sk-xxx）"""
+    settings = get_config()
     
-    参数:
-    - session_id: 会话的唯一标识。服务端靠它来区分“你是谁”，从而记住你们之前的聊天记录。
-    - user_input: 你这次想在终端里对 AI 说的话。
-    """
-    # 组装要发给服务端的 JSON 数据。
-    # 注意这里的键名 "session_id" 和 "user_input" 必须与后端 agentschema 里的 RunRequest 定义完全一致。
-    payload = {"session_id": session_id, "user_input": user_input}
+    # 解析嵌套键，如 llm.api_key
+    parts = key.split(".")
+    if len(parts) != 2:
+        typer.secho("❌ 错误：配置键必须为 '分组.字段' 格式，如 'llm.api_key'", fg=typer.colors.RED)
+        raise typer.Exit(1)
     
-    # 创建异步 HTTP 客户端。
-    # timeout=None 是关键：大模型思考可能很慢，如果设置了超时（比如默认 5 秒），
-    # 大模型还没想出来，客户端就主动断开连接了。这里必须设为 None（永不超时）。
-    async with httpx.AsyncClient(timeout=None) as client:
-        
-        # client.stream 是流式请求的核心。
-        # 普通的 client.post 会等服务器把所有数据都返回完才给你；
-        # 而 client.stream 就像接了一根水管，服务器吐一点，我们就能立刻处理一点。
-        async with client.stream("POST", SERVER_URL, json=payload) as resp:
-            
-            # 检查 HTTP 状态码。如果服务端报错（如 500 内部错误、422 参数校验失败），
-            # 这里会立刻抛出异常，防止后续代码强行解析错误数据。
-            resp.raise_for_status()
-            
-            # 按“行”异步迭代服务器的返回内容。
-            # 服务端返回的是标准的 SSE (Server-Sent Events) 格式，长相如下：
-            #   data: {"delta": "你", "finished": false}
-            #   data: {"delta": "好", "finished": false}
-            #   data: {"delta": "", "finished": true}
-            async for line in resp.aiter_lines():
-                
-                # 过滤掉非数据行。SSE 协议中有时候会有空行或者 "event: xxx" 这样的控制行，我们只要 "data: " 开头的。
-                if line.startswith("data: "):
-                    
-                    # 切片操作：把前 6 个字符（也就是 "data: "）切掉，只保留后面的 JSON 字符串。
-                    # .strip() 去掉首尾多余的空格和换行符。
-                    data = line[6:].strip()
-                    
-                    # 如果是空数据，直接跳过。
-                    if not data:
-                        continue
-                    
-                    # 把 JSON 字符串反序列化成 Python 字典。
-                    # 例如：'{"delta": "你"}' -> {"delta": "你"}
-                    chunk = json.loads(data)
-                    
-                    # 提取字典里的 "delta" 字段，也就是那一小段文字。
-                    # 用 .get("delta", "") 而不是 chunk["delta"] 是为了防崩溃：
-                    # 假如服务器最后发了个结束信号 {"finished": true} 没带 delta，.get 会返回空字符串，不会报错。
-                    # print 的参数：
-                    # end="" 意思是打印完不换行，让字连着字；
-                    # flush=True 极其重要：强制刷新缓冲区。如果不加，终端可能会攒够一整行才显示，失去了“打字机”的效果。
-                    print(chunk.get("delta", ""), end="", flush=True)
+    group, field = parts
+    if not hasattr(settings.app, group):
+        typer.secho(f"❌ 错误：未知的配置分组 '{group}'", fg=typer.colors.RED)
+        raise typer.Exit(1)
     
-    # 整个对话结束后，打印一个换行，让终端提示符回到下一行，看着更舒服。
-    print()
+    group_obj = getattr(settings.app, group)
+    if not hasattr(group_obj, field):
+        typer.secho(f"❌ 错误：未知的配置字段 '{field}'", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    
+    # 修改值
+    setattr(group_obj, field, value)
+    save_config(settings)
 
+@config_app.command("show")
+def show_config():
+    """显示当前所有配置"""
+    settings = get_config()
+    typer.echo(f"当前配置 ({CONFIG_PATH.absolute()}):")
+    typer.echo(json.dumps(settings.app.model_dump(), indent=2, ensure_ascii=False))
 
-# ==============================================================================
-# 4. 程序入口
-# ==============================================================================
-# 这行代码是 Python 的标准魔法：只有当这个文件被直接运行（而不是被当作模块导入）时，才会执行下面的代码。
+# =======================
+# 2. 命令：chat (用于对话)
+# =======================
+@app.command("chat")
+def chat(
+    message: str = typer.Argument(..., help="你想对 AI 说的话"),
+    session: str = typer.Option("default-session", "--session", "-s", help="会话 ID"),
+    url: str = typer.Option("http://127.0.0.1:8000/run", "--url", "-u", help="服务端地址")
+):
+    """发送消息并流式接收回复"""
+    settings = get_config()
+    
+    # 检查是否配置了 API Key
+    if not settings.app.llm.api_key:
+        typer.secho("⚠️ 警告：尚未配置 API Key，请先运行 `agentcli config set llm.api_key 你的密钥`", fg=typer.colors.YELLOW)
+
+    async def _run():
+        payload = {"session_id": session, "user_input": message}
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", url, json=payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if not data:
+                                continue
+                            chunk = json.loads(data)
+                            typer.echo(chunk.get("delta", ""), nl=False)
+                typer.echo() # 换行
+            except httpx.ConnectError:
+                typer.secho("❌ 无法连接到服务端，请确保 `uv run --package agentserver uvicorn agentserver.main:app --port 8000` 已经启动", fg=typer.colors.RED)
+
+    asyncio.run(_run())
+
+# =======================
+# 程序入口
+# =======================
 if __name__ == "__main__":
-    
-    # sys.argv 包含了你在终端敲下的所有参数。
-    # sys.argv[0] 是脚本名字（比如 main.py）。
-    # sys.argv[1] 才是你真正输入的问题。
-    # 如果你只敲了脚本名没带问题，长度就会小于 2。
-    if len(sys.argv) < 2:
-        # 友好提示怎么使用。⚠️注意：你这里的提示词写的是 agent_cli.main（带下划线），
-        # 但你的包名叫 agentcli（没下划线），建议这里改成正确的。
-        print("用法: uv run --package agentcli python -m agentcli.main \"你的问题\"")
-        sys.exit(1) # 退出程序，返回错误码 1
-    
-    # 为本地测试指定一个固定的会话 ID。
-    # 这意味着只要你这个终端不关，不管问几次，AI 都能记得你之前说的话（服务端有历史记录）。
-    # 以后如果做真正的命令行工具，可以在这里使用随机生成的 UUID，实现每次启动都是全新会话。
-    session_id = "local-test-session"
-    
-    # asyncio.run() 是启动异步程序的“点火钥匙”。
-    # 它会创建一个事件循环，运行我们定义的 chat 函数，直到 chat 里的所有 await 结束。
-    # 把你在终端输入的真实问题（sys.argv[1]）传进去。
-    asyncio.run(chat(session_id, sys.argv[1]))
+    app()
