@@ -12,6 +12,7 @@ dependencies = [
     "agentllm",
     "agentschema",
     "fastapi[standard]",
+    "sse-starlette", 
 ]
 
 [tool.uv.sources]
