@@ -1,2 +1,2 @@
-def main() -> None:
-    print("Hello from agentcore!")
+from .loop import AgentLoop
+__all__ = ["AgentLoop"]
