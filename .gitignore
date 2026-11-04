@@ -46,3 +46,6 @@ desktop.ini
 # 本地日志与临时文件
 *.log
 *.tmp
+
+# 本地隐私配置文件（绝对不能提交）
+config.toml

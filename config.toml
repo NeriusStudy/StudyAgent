@@ -1,9 +1,0 @@
-[llm]
-base_url = "https://api.deepseek.com/v1"
-api_key = "sk-49473bf57eb0441a9c3f9c30128c593d"
-model = "deepseek-chat"
-
-[storage]
-log_dir = "./logs"
-db_url = "sqlite:///./agent.db"
-memory_path = "./memory"
