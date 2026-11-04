@@ -1,4 +1,5 @@
 # packages/schema/src/agentschema/config.py
+import shutil  # shutil，用于复制文件
 import tomllib
 from pathlib import Path
 from typing import Optional
@@ -48,16 +49,25 @@ class Settings(BaseSettings):
 def load_settings(config_path: Path = Path("config.toml")) -> Settings:
     """
     企业级配置加载器：
-    优先读取本地 config.toml，如果不存在则使用默认配置。
-    以后如果要接入环境变量，也可以在这里做优先级合并。
+    优先读取本地 config.toml，如果不存在则尝试从示例文件生成，最后兜底默认配置。
     """
+    # 1. 如果 config.toml 不存在，尝试从 config.example.toml 复制
+    if not config_path.exists():
+        example_path = Path("config.example.toml")
+        if example_path.exists():
+            shutil.copy(example_path, config_path)
+            print(f"⚠️ 提示：未找到 {config_path}，已自动为您生成。")
+            print(f"👉 请打开 {config_path} 文件，填入您的真实 API Key！")
+        else:
+            print(f"⚠️ 提示：未找到配置文件，将使用默认配置（可能无法调用大模型）。")
+
+    # 2. 如果文件存在，解析并返回
     if config_path.exists():
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
-        # 注意：TOML 文件的最顶层就是 llm 和 storage，对应 AppConfig
         return Settings(app=AppConfig(**data))
     
-    # 如果连配置文件都没有（比如刚 clone 下来），就用默认值
+    # 3. 兜底：使用代码里定义的默认值
     return Settings()
 
 # 导出配置类
