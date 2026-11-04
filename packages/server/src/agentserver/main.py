@@ -10,9 +10,10 @@ from fastapi import FastAPI
 # ⚠️ 前置条件：packages/server/pyproject.toml 的 dependencies 里必须有 "sse-starlette"。
 from sse_starlette.sse import EventSourceResponse
 
-# 从底层的 agentschema 包导入请求体结构和流式碎片结构。
+# 从底层的 agentschema 包导入请求体结构和流式碎片结构和配置类。
 # ⚠️ 包名是 agentschema（无下划线），不是 agent_schema。
-from agentschema import RunRequest, StreamChunk
+# 导入新增的 load_settings
+from agentschema import RunRequest, StreamChunk, load_settings
 
 # 从 agentllm 包导入 Provider 实现。
 # ⚠️ 包名是 agentllm（无下划线）。
@@ -22,6 +23,8 @@ from agentllm import OpenAICompatibleProvider
 # ⚠️ 包名是 agentcore（无下划线）。
 from agentcore import AgentLoop
 
+# 1. 加载配置 (如果 config.toml 存在则读取，不存在则用默认值)
+settings = load_settings()
 
 # ==============================================================================
 # 2. 模块级“单例”：在应用启动时创建一次，全进程共享
@@ -35,8 +38,11 @@ from agentcore import AgentLoop
 # 如果启动时没设置 LLM_BASE_URL 环境变量，OpenAICompatibleProvider() 会立刻抛 ValueError，
 # 导致整个 uvicorn 服务直接起不来（这是好事，把配置错误暴露在启动阶段，
 # 而不是等用户第一次发消息时才 500）。
-provider = OpenAICompatibleProvider()
 
+
+# 如果本地有 config.toml，可以手动加载 (由于 pydantic 限制，简单起见先用 toml 读一下，或者依靠环境变量)
+# 为了方便，我们直接使用 settings.app 里的默认配置
+provider = OpenAICompatibleProvider(settings.app.llm)
 # 把 provider 注入给 AgentLoop（依赖注入）。
 # AgentLoop 只管业务逻辑，不知道 provider 是怎么配置的。
 agent_loop = AgentLoop(provider)
@@ -46,7 +52,7 @@ agent_loop = AgentLoop(provider)
 # 3. 创建 FastAPI 应用实例
 # ==============================================================================
 # title 参数会显示在 FastAPI 自动生成的 Swagger 文档页（/docs）上，方便调试。
-app = FastAPI(title="Minimal Agent Server")
+app = FastAPI(title="EnterpriseAgentServer")
 
 
 # ==============================================================================
