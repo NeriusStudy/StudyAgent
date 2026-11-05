@@ -6,7 +6,14 @@ import httpx
 import tomli_w
 from pathlib import Path
 from typing import Optional
-from agentschema import Settings, AppConfig, load_settings, save_settings, DEFAULT_CONFIG_PATH
+from agentschema import (
+    Settings,
+    AppConfig,
+    load_settings,
+    save_settings,
+    DEFAULT_CONFIG_PATH,
+    StrategyType,     # 新增
+)
 
 # 创建 Typer 应用实例
 app = typer.Typer(help="Enterprise Agent 命令行工具", no_args_is_help=True)
@@ -72,7 +79,12 @@ def show_config():
 def chat(
     message: str = typer.Argument(..., help="你想对 AI 说的话"),
     session: str = typer.Option("default-session", "--session", "-s", help="会话 ID"),
-    url: str = typer.Option("http://127.0.0.1:8000/run", "--url", "-u", help="服务端地址")
+    url: str = typer.Option("http://127.0.0.1:8000/run", "--url", "-u", help="服务端地址"),
+    strategy: Optional[StrategyType] = typer.Option(
+        None,
+        "--strategy", "-t",
+        help="选择策略：chat / react（不传则用服务端配置的默认策略）",
+    ),
 ):
     """发送消息并流式接收回复"""
     settings = get_config()
@@ -83,6 +95,8 @@ def chat(
 
     async def _run():
         payload = {"session_id": session, "user_input": message}
+        if strategy is not None:
+            payload["strategy"] = strategy.value
         async with httpx.AsyncClient(timeout=None) as client:
             try:
                 async with client.stream("POST", url, json=payload) as resp:
