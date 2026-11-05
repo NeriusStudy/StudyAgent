@@ -7,12 +7,9 @@ from typing import AsyncIterator
 # 从底层的 agentschema 包导入数据契约：
 # - Message：单条对话消息（包含 role 和 content）
 # - Role：角色枚举（USER / ASSISTANT / SYSTEM）
-from agentschema import Message, Role
-
-# 从相邻的 agentllm 包导入 Provider 的具体实现。
-# 注意：core 依赖 llm 是符合依赖方向的（core -> llm -> schema），
-# 但 core 只依赖“抽象接口”层面的能力，不关心 llm 内部用的是什么 SDK。
-from agentllm import OpenAICompatibleProvider
+# 不再 import agentllm
+# from agentllm import OpenAICompatibleProvider  
+from agentschema import Message, Role, LLMProvider
 
 
 # ==============================================================================
@@ -33,22 +30,10 @@ class AgentLoop:
     - 不感知具体模型（不关心是 OpenAI 还是 DeepSeek），只依赖 Provider 接口。
     """
 
-    def __init__(self, provider: OpenAICompatibleProvider):
-        """
-        构造函数：注入依赖（Dependency Injection）。
-        
-        为什么要从外部传入 provider，而不是在内部 new 一个？
-        因为这样可以让 AgentLoop 完全不知道 provider 是怎么配置的（API Key 从哪来、用哪个模型）。
-        测试时我们可以传入一个假的 Mock Provider，不必真的去调用大模型。
-        """
-        # 保存 provider 引用，后续每次调用 run_stream 都会用它。
+    def __init__(self, provider: LLMProvider): # <--- 依赖倒置！
         self.provider = provider
-
-        # 用内存字典模拟 Session 存储。
-        # 结构：{ "session_id_1": [Message, Message, ...], "session_id_2": [...] }
-        # 类型注解 dict[str, list[Message]] 表示：键是字符串，值是 Message 列表。
-        # 以后换成 SQLite/Redis 时，只需替换 _get_history 和 append 的实现，外部接口不变。
         self._sessions: dict[str, list[Message]] = {}
+    
 
     def _get_history(self, session_id: str) -> list[Message]:
         """
