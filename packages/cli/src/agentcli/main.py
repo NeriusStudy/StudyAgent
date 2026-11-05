@@ -6,26 +6,22 @@ import httpx
 import tomli_w
 from pathlib import Path
 from typing import Optional
-from agentschema import Settings, AppConfig, load_settings
+from agentschema import Settings, AppConfig, load_settings, save_settings, DEFAULT_CONFIG_PATH
 
 # 创建 Typer 应用实例
 app = typer.Typer(help="Enterprise Agent 命令行工具", no_args_is_help=True)
-
-# 全局配置路径（默认当前目录下的 config.toml）
-CONFIG_PATH = Path("config.toml")
 
 # =======================
 # 辅助函数：加载与保存配置
 # =======================
 # 辅助函数：直接调用底层加载器
 def get_config() -> Settings:
-    return load_settings(CONFIG_PATH)
+    return load_settings()
 
 def save_config(settings: Settings):
-    """将配置写入 TOML 文件"""
-    with open(CONFIG_PATH, "wb") as f:
-        tomli_w.dump(settings.app.model_dump(), f)
-    typer.secho(f"✅ 配置已保存至 {CONFIG_PATH.absolute()}", fg=typer.colors.GREEN)
+    """直接调用底层的保存器"""
+    save_settings(settings)
+    typer.secho(f"✅ 配置已保存", fg=typer.colors.GREEN)
 
 # =======================
 # 1. 命令组：config (用于修改配置)
@@ -65,7 +61,8 @@ def set_config(
 def show_config():
     """显示当前所有配置"""
     settings = get_config()
-    typer.echo(f"当前配置 ({CONFIG_PATH.absolute()}):")
+    # 修改 3：使用 DEFAULT_CONFIG_PATH 显示路径
+    typer.echo(f"当前配置 ({DEFAULT_CONFIG_PATH.absolute()}):")
     typer.echo(json.dumps(settings.app.model_dump(), indent=2, ensure_ascii=False))
 
 # =======================

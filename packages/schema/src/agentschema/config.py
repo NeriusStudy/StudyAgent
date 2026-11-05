@@ -1,10 +1,14 @@
 # packages/schema/src/agentschema/config.py
 import shutil  # shutil，用于复制文件
 import tomllib
+import tomli_w
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 统一定义默认路径
+DEFAULT_CONFIG_PATH = Path("config.toml")
 
 # 1. 定义各个模块的配置子集
 class LLMConfig(BaseModel):
@@ -69,6 +73,14 @@ def load_settings(config_path: Path = Path("config.toml")) -> Settings:
     
     # 3. 兜底：使用代码里定义的默认值
     return Settings()
+
+# 新增：统一的配置保存器
+def save_settings(settings: Settings, config_path: Path = DEFAULT_CONFIG_PATH):
+    """
+    保存配置到 TOML 文件。
+    """
+    with open(config_path, "wb") as f:
+        tomli_w.dump(settings.app.model_dump(), f)
 
 # 导出配置类
 __all__ = ["AppConfig", "LLMConfig", "StorageConfig", "Settings"]
