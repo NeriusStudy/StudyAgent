@@ -12,7 +12,7 @@ from typing import AsyncIterator
 
 # 从我们底层的 agentschema 包中导入 Message 类，用来接收历史对话数据。
 # 从我们底层的 agentschema 包中导入 LLMConfig 类，用来读取大模型提供商的配置。
-from agentschema import Message, LLMConfig # 导入配置
+from agentschema import Message, LLMConfig, Role, ToolCall, ToolDefinition
 
 
 # ==============================================================================
@@ -35,6 +35,99 @@ class OpenAICompatibleProvider:
             raise ValueError("LLM_BASE_URL 未设置！")
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未设置！")
+    
+    def _to_api_message(self, m: Message) -> dict:
+        """
+        把内部 Message 转成 OpenAI 兼容 API 的 message 格式。
+        关键差异：
+        - 普通消息：{"role": "user", "content": "..."}
+        - assistant 发起工具调用：{"role": "assistant", "content": null, "tool_calls": [...]}
+        - tool 回填结果：{"role": "tool", "content": "...", "tool_call_id": "..."}
+        """
+        msg: dict = {"role": m.role.value}
+
+        # content 可能是 None（assistant 调工具时），只有非 None 才放进去
+        if m.content is not None:
+            msg["content"] = m.content
+
+        # assistant 发起的工具调用
+        if m.tool_calls:
+            msg["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in m.tool_calls
+            ]
+
+        # tool 消息必须带 tool_call_id，让模型知道这是对哪次调用的回复
+        if m.tool_call_id:
+            msg["tool_call_id"] = m.tool_call_id
+
+        return msg
+    
+    async def chat_with_tools(
+        self,
+        messages: list[Message],
+        tools: list[ToolDefinition],
+    ) -> Message:
+        """
+        非流式调用，专门给 ReAct 循环用。
+        返回带 tool_calls 的 assistant Message（如果模型没调工具，tool_calls 为 None）。
+
+        为什么不用流式？
+        - ReAct 需要先拿到完整的 tool_calls 才能决定执行哪些工具，流式解析 tool_calls 的增量 JSON 非常复杂
+        - 工具调用本身不是"打字机"体验，用户不需要逐字看到"我要调计算器"
+        - 只有最后的自然语言回复才需要流式（这一步由策略层在拿到结果后再次调用 stream_chat 实现）
+        """
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # 把内部 ToolDefinition 转成 OpenAI 的 tools 格式
+        openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": d.name,
+                    "description": d.description,
+                    "parameters": d.parameters,
+                },
+            }
+            for d in tools
+        ]
+
+        payload = {
+            "model": self.model,
+            "messages": [self._to_api_message(m) for m in messages],
+            "tools": openai_tools,
+            "tool_choice": "auto",
+            "stream": False,
+        }
+
+        async with httpx.AsyncClient(timeout=None) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        choice = data["choices"][0]["message"]
+        tool_calls = [
+            ToolCall(
+                id=tc["id"],
+                name=tc["function"]["name"],
+                arguments=tc["function"]["arguments"],
+            )
+            for tc in choice.get("tool_calls", [])
+        ]
+
+        return Message(
+            role=Role.ASSISTANT,
+            content=choice.get("content"),
+            tool_calls=tool_calls or None,   # 空列表转 None，符合 schema 语义
+        )
 
     async def stream_chat(self, messages: list[Message]) -> AsyncIterator[str]:
         """
@@ -57,11 +150,9 @@ class OpenAICompatibleProvider:
         
         # 请求体 (Payload)：把我们的内部数据翻译成大模型要的格式
         payload = {
-            "model": self.model, # 告诉服务器用哪个模型
-            # 列表推导式：把 Pydantic 的 Message 对象，转换为纯字典。
-            # 注意 m.role.value：因为我们的 Role 是 Enum，必须取 .value 才能得到纯字符串 "user"。
-            "messages": [{"role": m.role.value, "content": m.content} for m in messages],
-            "stream": True, # 极其关键！开启流式输出（打字机效果）
+            "model": self.model,
+            "messages": [self._to_api_message(m) for m in messages],
+            "stream": True,
         }
 
         # 使用 httpx 创建一个异步客户端，超时时间设置为 60 秒

@@ -2,6 +2,7 @@
 import shutil  # shutil，用于复制文件
 import tomllib
 import tomli_w
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -23,10 +24,21 @@ class StorageConfig(BaseModel):
     db_url: str = Field(default="sqlite:///./agent.db", description="数据库连接地址")
     memory_path: str = Field(default="./memory", description="本地记忆存储路径")
 
+# 定义agent配置
+class StrategyType(str, Enum):
+    CHAT = "chat"
+    REACT = "react"
+
+class AgentConfig(BaseModel):
+    strategy: StrategyType = StrategyType.CHAT
+    max_react_steps: int = 10          # ReAct 最大轮数，防止死循环
+
+
 # 2. 顶级配置类，组合所有子配置
 class AppConfig(BaseModel):
     """全局应用配置"""
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)  # 新增 agent 配置
     storage: StorageConfig = Field(default_factory=StorageConfig)
 
 # 3. 配置文件管理类
@@ -83,4 +95,11 @@ def save_settings(settings: Settings, config_path: Path = DEFAULT_CONFIG_PATH):
         tomli_w.dump(settings.app.model_dump(), f)
 
 # 导出配置类
-__all__ = ["AppConfig", "LLMConfig", "StorageConfig", "Settings"]
+__all__ = [
+    "AppConfig",
+    "LLMConfig",
+    "StorageConfig",
+    "AgentConfig",
+    "StrategyType",
+    "Settings",
+]
