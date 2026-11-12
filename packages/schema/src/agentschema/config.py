@@ -1,10 +1,9 @@
 # packages/schema/src/agentschema/config.py
-import shutil  # shutil，用于复制文件
+import shutil
 import tomllib
 import tomli_w
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,93 +12,80 @@ DEFAULT_CONFIG_PATH = Path("config.toml")
 
 # 1. 定义各个模块的配置子集
 class LLMConfig(BaseModel):
-    """大模型提供商配置"""
     base_url: str = Field(default="https://api.deepseek.com/v1", description="API基础地址")
     api_key: str = Field(default="", description="API密钥")
     model: str = Field(default="deepseek-chat", description="使用的模型名称")
 
 class StorageConfig(BaseModel):
-    """存储配置 (为未来的记忆、日志、数据库预留)"""
     log_dir: str = Field(default="./logs", description="日志存储目录")
     db_url: str = Field(default="sqlite:///./agent.db", description="数据库连接地址")
     memory_path: str = Field(default="./memory", description="本地记忆存储路径")
 
-# 定义agent配置
 class StrategyType(str, Enum):
     CHAT = "chat"
     REACT = "react"
 
 class AgentConfig(BaseModel):
     strategy: StrategyType = StrategyType.CHAT
-    max_react_steps: int = 10          # ReAct 最大轮数，防止死循环
+    max_react_steps: int = 10
 
+# ================= 新增：MCP 配置 =================
+class MCPServerConfig(BaseModel):
+    name: str = Field(description="MCP Server 的唯一名称，用于日志和调试")
+    transport: str = Field(default="stdio", description="传输方式: 'stdio' 或 'http'")
+    
+    # stdio 模式专用
+    command: str = Field(default="", description="执行命令，如 'npx'")
+    args: list[str] = Field(default_factory=list, description="命令参数列表")
+    
+    # http 模式专用
+    url: str = Field(default="", description="HTTP MCP 的地址，如 'http://localhost:3001/mcp'")
 
-# 2. 顶级配置类，组合所有子配置
+class ToolsConfig(BaseModel):
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list, description="需要连接的 MCP 服务器列表")
+# =================================================
+
+# 2. 顶级配置类
 class AppConfig(BaseModel):
-    """全局应用配置"""
     llm: LLMConfig = Field(default_factory=LLMConfig)
-    agent: AgentConfig = Field(default_factory=AgentConfig)  # 新增 agent 配置
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig) # 新增 tools 配置
 
 # 3. 配置文件管理类
 class Settings(BaseSettings):
-    """
-    继承自 BaseSettings，它会自动帮忙处理：
-    1. 从环境变量读取（优先级最高）
-    2. 从 .env 文件读取
-    3. 提供默认值
-    """
-    # 指定配置文件的默认路径 (当前工作目录下的 config.toml)
     config_file: Path = Path("config.toml")
-    
-    # 核心配置对象
     app: AppConfig = Field(default_factory=AppConfig)
 
     model_config = SettingsConfigDict(
-        env_prefix="AGENT_", # 以后环境变量可以写成 AGENT_APP_LLM__API_KEY
+        env_prefix="AGENT_",
         env_nested_delimiter="__",
         extra="ignore"
     )
 
-# 4. 新增：通用的配置加载函数
 def load_settings(config_path: Path = Path("config.toml")) -> Settings:
-    """
-    企业级配置加载器：
-    优先读取本地 config.toml，如果不存在则尝试从示例文件生成，最后兜底默认配置。
-    """
-    # 1. 如果 config.toml 不存在，尝试从 config.example.toml 复制
     if not config_path.exists():
         example_path = Path("config.example.toml")
         if example_path.exists():
             shutil.copy(example_path, config_path)
-            print(f"⚠️ 提示：未找到 {config_path}，已自动为您生成。")
-            print(f"👉 请打开 {config_path} 文件，填入您的真实 API Key！")
+            print(f"提示: 未找到 {config_path}, 已自动为您生成。")
+            print(f"提示: 请打开 {config_path} 文件, 填入您的真实 API Key!")
         else:
-            print(f"⚠️ 提示：未找到配置文件，将使用默认配置（可能无法调用大模型）。")
+            print(f"提示: 未找到配置文件, 将使用默认配置。")
 
-    # 2. 如果文件存在，解析并返回
     if config_path.exists():
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
         return Settings(app=AppConfig(**data))
-    
-    # 3. 兜底：使用代码里定义的默认值
+
     return Settings()
 
-# 新增：统一的配置保存器
 def save_settings(settings: Settings, config_path: Path = DEFAULT_CONFIG_PATH):
-    """
-    保存配置到 TOML 文件。
-    """
     with open(config_path, "wb") as f:
-        tomli_w.dump(settings.app.model_dump(), f)
+        tomli_w.dump(settings.app.model_dump(exclude_none=True), f)
 
-# 导出配置类
 __all__ = [
-    "AppConfig",
-    "LLMConfig",
-    "StorageConfig",
-    "AgentConfig",
-    "StrategyType",
-    "Settings",
+    "AppConfig", "LLMConfig", "StorageConfig", "AgentConfig", 
+    "ToolsConfig", "MCPServerConfig", "StrategyType", 
+    "Settings", "load_settings", "save_settings", "DEFAULT_CONFIG_PATH"
 ]

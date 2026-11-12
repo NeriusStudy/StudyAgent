@@ -1,13 +1,30 @@
 # config.example.toml
 # 说明：请复制此文件并重命名为 config.toml，然后填入真实的 API Key。
-# 注意：config.toml 已被加入 .gitignore，千万不要将其提交到 Git！
 
 [llm]
 base_url = "https://api.deepseek.com/v1"
-api_key = "在这里填入你的-API-KEY"  # <--- 保持为空或填入占位符
+api_key = "在这里填入你的-API-KEY"
 model = "deepseek-chat"
+
+[agent]
+strategy = "chat"
+max_react_steps = 10
 
 [storage]
 log_dir = "./logs"
 db_url = "sqlite:///./agent.db"
 memory_path = "./memory"
+
+# ====== 新增：工具与 MCP 配置 ======
+# 你可以在这里配置多个 MCP Server
+[[tools.mcp_servers]]
+name = "everything_http"
+transport = "http"
+url = "http://localhost:3001/mcp"
+
+# 如果你用 stdio 模式，取消下面这段注释即可
+# [[tools.mcp_servers]]
+# name = "everything_stdio"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-everything"]

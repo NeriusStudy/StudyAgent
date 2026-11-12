@@ -10,30 +10,20 @@ from uuid import uuid4
 
 # 导入配置类
 from .config import (
-    AppConfig,
-    AgentConfig,            # 新增
-    StrategyType,           # 新增
-    LLMConfig,
-    StorageConfig,
-    Settings,
-    load_settings,
-    save_settings,
-    DEFAULT_CONFIG_PATH,
+    AppConfig, AgentConfig, StrategyType, LLMConfig, StorageConfig, ToolsConfig, MCPServerConfig,
+    Settings, load_settings, save_settings, DEFAULT_CONFIG_PATH,
 )
 
 # 导入大模型协议接口（这需要你建一个 protocols.py 文件，下面有教）
-from .protocols import LLMProvider, ToolHandler  # <--- 导入 Protocol
-
+from .protocols import LLMProvider, ToolHandler
 
 # 更新导出的列表，把所有对外暴露的类都放进去
 __all__ = [
-    # 配置相关
-    "AppConfig", "AgentConfig", "StrategyType", "LLMConfig", "StorageConfig", "Settings",
-    "load_settings", "save_settings", "DEFAULT_CONFIG_PATH",
-    # 协议相关
-    "LLMProvider",
-    # 数据模型
-    "Role", "Message", "SessionEvent", "RunRequest", "StreamChunk",
+    "AppConfig", "AgentConfig", "StrategyType", "LLMConfig", "StorageConfig", 
+    "ToolsConfig", "MCPServerConfig", "Settings", "load_settings", "save_settings", "DEFAULT_CONFIG_PATH",
+    "LLMProvider", "ToolHandler",
+    "Role", "Message", "SessionEvent", "RunRequest", "StreamChunk", 
+    "ToolCall", "ToolResult", "ToolDefinition",
 ]
 
 
