@@ -15,16 +15,18 @@ log_dir = "./logs"
 db_url = "sqlite:///./agent.db"
 memory_path = "./memory"
 
-# ====== 新增：工具与 MCP 配置 ======
-# 你可以在这里配置多个 MCP Server
-[[tools.mcp_servers]]
-name = "everything_http"
-transport = "http"
-url = "http://localhost:3001/mcp"
+# ============================================================
+# 工具配置
+# ============================================================
 
-# 如果你用 stdio 模式，取消下面这段注释即可
+# 本地工具列表。name 对应 agentcore/tools/builtin/ 下的模块名。
+[[tools.local_tools]]
+name = "calculator"
+enabled = true
+
+# MCP Server 列表（示例：Everything 测试服务器）
+# 取消注释即可启用
 # [[tools.mcp_servers]]
-# name = "everything_stdio"
-# transport = "stdio"
-# command = "npx"
-# args = ["-y", "@modelcontextprotocol/server-everything"]
+# name = "everything_http"
+# transport = "http"
+# url = "http://localhost:3001/mcp"
